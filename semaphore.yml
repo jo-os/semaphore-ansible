@@ -1,0 +1,95 @@
+---
+- hosts: semaphore
+  become: true
+  vars:
+    db_pass: "password"
+    admin_password: "admin-password"
+    db_name: "semaphore"
+    db_user: "semaphore"
+  tasks:
+  ######################### Install Docker #########################
+    - name: Install aptitude
+      apt:
+        name: aptitude
+        state: latest
+        update_cache: true
+
+    - name: Install required system packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+          - virtualenv
+          - python3-setuptools
+        state: latest
+        update_cache: true
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      apt:
+        name: docker-ce
+        state: latest
+        update_cache: true
+
+    - name: remove EXTERNALLY-MANAGED if we're on debian12
+      ansible.builtin.file:
+        path: /usr/lib/python3.11/EXTERNALLY-MANAGED
+        state: absent
+      when: ansible_distribution == "Debian"
+
+    - name: Install Docker Module for Python
+      pip:
+        name: docker
+        
+######################### Start Containers #########################
+
+    - name: Postgres container
+      docker_container:
+        name: postgres
+        hostname: postgres
+        image: postgres:latest
+        volumes:
+        - ./pg_data:/var/lib/postgresql/data
+        env:
+          POSTGRES_DB: "{{ db_name }}"
+          POSTGRES_USER: "{{ db_user }}"
+          POSTGRES_PASSWORD: "{{ db_pass }}"
+          PGDATA: /var/lib/pgsql/data/userdata
+        restart: yes
+
+    - name: Semaphore container
+      docker_container:
+        name: semaphore
+        image: semaphoreui/semaphore:latest
+        restart: yes
+        ports:
+          - 3000:3000
+        env:
+          SEMAPHORE_DB_USER: "{{ db_user }}"
+          SEMAPHORE_DB_PASS: "{{ db_pass }}"
+          SEMAPHORE_DB_HOST: postgres
+          SEMAPHORE_DB_PORT: "5432"
+          SEMAPHORE_DB_DIALECT: postgres
+          SEMAPHORE_DB: "{{ db_name }}"
+          SEMAPHORE_PLAYBOOK_PATH: /tmp/semaphore/
+          SEMAPHORE_ADMIN_PASSWORD: "{{ admin_password }}"
+          SEMAPHORE_ADMIN_NAME: Joos
+          SEMAPHORE_ADMIN_EMAIL: my@email.com
+          SEMAPHORE_ADMIN: admin
+          SEMAPHORE_ACCESS_KEY_ENCRYPTION: KEY
+        links:
+          - postgres
+          
+#############################################################################
