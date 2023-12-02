@@ -1,0 +1,2 @@
+# semaphore-ansible
+Semaphore
